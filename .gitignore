@@ -1,0 +1,19 @@
+# Built gem artifacts
+*.gem
+pkg/
+
+# Bundler
+.bundle/
+Gemfile.lock
+
+# Ruby version manager overrides
+.ruby-version
+.rbenv-version
+
+# RSpec
+.rspec_status
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
