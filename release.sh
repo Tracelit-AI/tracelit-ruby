@@ -34,7 +34,6 @@ fi
 
 echo "Tagging ${TAG} and pushing to GitHub..."
 git tag "$TAG"
-git push origin main
 git push origin "$TAG"
 
 echo ""
