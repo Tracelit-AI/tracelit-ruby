@@ -1,0 +1,77 @@
+You are integrating the Tracelit Ruby SDK into this codebase.
+
+## What Tracelit does
+Tracelit is a drop-in OpenTelemetry SDK that sends traces, metrics, and logs
+to https://tracelit.io via OTLP/HTTP. It auto-instruments Rails, Sidekiq,
+ActiveRecord, Redis, Faraday, Net::HTTP, and more with zero code changes.
+
+## Steps
+
+### 1. Add the gem
+In Gemfile add:
+  gem "tracelit"
+Then run: bundle install
+
+### 2. Create the initializer
+Create config/initializers/tracelit.rb with this content
+(replace MY_SERVICE_NAME with the actual name of this service):
+
+  Tracelit.configure do |config|
+    config.api_key      = ENV["TRACELIT_API_KEY"]
+    config.service_name = "MY_SERVICE_NAME"
+    config.environment  = ENV.fetch("RAILS_ENV", "production")
+    config.sample_rate  = 1.0
+    config.enabled      = ENV["TRACELIT_ENABLED"] != "false"
+  end
+
+For Sinatra/Rack apps also add Tracelit.start! after the configure block.
+For Rails, the Railtie calls start! automatically — no extra line needed.
+
+### 3. Disable in tests
+In config/environments/test.rb (or .env.test) add:
+  TRACELIT_ENABLED=false
+
+### 4. Add manual spans (optional)
+Wrap any important operation with a custom span:
+
+  Tracelit.tracer.in_span("describe_the_operation") do |span|
+    span.set_attribute("relevant.attribute", value.to_s)
+    do_the_work
+  end
+
+### 5. Add custom metrics (optional)
+Use counters, histograms, or gauges for business-level signals:
+
+  # Counter — increment by 1 each time an event occurs
+  counter = Tracelit.metrics.counter("my.event.count",
+    description: "...", unit: "{events}")
+  counter.add(1, attributes: { "key" => "value" })
+
+  # Histogram — record a measured value (latency, size, etc.)
+  histogram = Tracelit.metrics.histogram("my.operation.duration",
+    description: "...", unit: "ms")
+  histogram.record(elapsed_ms, attributes: { "key" => "value" })
+
+  # Gauge — record a current level (queue depth, pool size, etc.)
+  gauge = Tracelit.metrics.gauge("my.queue.depth",
+    description: "...", unit: "{items}")
+  gauge.record(current_depth, attributes: { "queue" => "default" })
+
+## What you get automatically (no code required)
+- Traces for every HTTP request, SQL query, Redis call, Sidekiq job, etc.
+- Metrics: http.server.request.count/duration, http.server.error.count,
+  db.query.duration, sidekiq.job.count/duration/error.count,
+  db.connection_pool.size/busy/idle/waiting, process.memory.rss
+- Rails.logger lines forwarded to Tracelit logs, correlated to the active trace
+- Error spans always exported even when the trace is outside the sample ratio
+
+## Configuration reference
+| Option              | Env var                  | Default                     |
+|---------------------|--------------------------|-----------------------------|
+| api_key             | TRACELIT_API_KEY         | nil (required)              |
+| service_name        | TRACELIT_SERVICE_NAME    | Rails app name (required)   |
+| environment         | TRACELIT_ENVIRONMENT     | "production"                |
+| endpoint            | TRACELIT_ENDPOINT        | https://ingest.tracelit.app |
+| sample_rate         | TRACELIT_SAMPLE_RATE     | 1.0                         |
+| enabled             | TRACELIT_ENABLED         | true                        |
+| resource_attributes | —                        | {} (extra span/metric tags) |
