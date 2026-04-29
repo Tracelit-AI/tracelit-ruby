@@ -39,7 +39,7 @@ module Tracelit
         )
       end
     rescue StandardError => e
-      warn "Tracelit: failed to install Rails logger bridge: #{e.message}"
+      warn "[Tracelit] failed to install Rails logger bridge: #{e.message}"
     end
 
     # OTelLogger is a Logger subclass whose add method emits an OTel LogRecord
@@ -59,6 +59,14 @@ module Tracelit
       end
 
       def add(severity, message = nil, progname = nil)
+        # Fix 10: Re-entrancy guard. OTel SDK internals can call OpenTelemetry.logger
+        # which may route back through Rails.logger → this method. Without the
+        # guard, that creates a feedback loop where every OTel internal warning
+        # triggers another OTel log emit, infinitely.
+        return if Thread.current[:tracelit_logging]
+
+        Thread.current[:tracelit_logging] = true
+
         severity_number = SEVERITY_MAP[severity.to_i] || 9
         severity_text   = ::Logger::SEV_LABEL[severity.to_i] || "ANY"
 
@@ -76,6 +84,8 @@ module Tracelit
         )
       rescue StandardError
         # Never let OTel errors surface to the application
+      ensure
+        Thread.current[:tracelit_logging] = nil
       end
       alias_method :log, :add
 

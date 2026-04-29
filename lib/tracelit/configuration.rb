@@ -29,19 +29,40 @@ module Tracelit
     attr_accessor :resource_attributes
 
     def initialize
-      @api_key            = ENV["TRACELIT_API_KEY"]
-      @service_name       = ENV["TRACELIT_SERVICE_NAME"]
-      @environment        = ENV["TRACELIT_ENVIRONMENT"] || "production"
-      @endpoint           = ENV["TRACELIT_ENDPOINT"]    || "https://ingest.tracelit.app"
-      @sample_rate        = (ENV["TRACELIT_SAMPLE_RATE"] || "1.0").to_f
-      @enabled            = ENV["TRACELIT_ENABLED"] != "false"
+      @api_key             = ENV["TRACELIT_API_KEY"]
+      @service_name        = ENV["TRACELIT_SERVICE_NAME"]
+      @environment         = ENV["TRACELIT_ENVIRONMENT"] || "production"
+      @endpoint            = ENV["TRACELIT_ENDPOINT"]    || "https://ingest.tracelit.app"
+      @sample_rate         = (ENV["TRACELIT_SAMPLE_RATE"] || "1.0").to_f
+      @enabled             = ENV["TRACELIT_ENABLED"] != "false"
       @resource_attributes = {}
     end
 
+    # Returns an array of human-readable error strings.
+    # Empty array means the configuration is valid.
+    # Never raises — callers decide whether to warn or abort.
+    def valid?
+      errors = []
+      errors << "api_key is required" if api_key.nil? || api_key.to_s.empty?
+
+      # Fix 3: check resolved_service_name so Rails apps that rely on automatic
+      # name inference (module_parent_name) are not incorrectly flagged.
+      if resolved_service_name == "unknown-service"
+        errors << "service_name is required (set config.service_name or TRACELIT_SERVICE_NAME)"
+      end
+
+      unless sample_rate.between?(0.0, 1.0)
+        errors << "sample_rate must be between 0.0 and 1.0 (got #{sample_rate})"
+      end
+
+      errors
+    end
+
+    # Kept for backwards compatibility. Previously raised ArgumentError;
+    # now a no-op because an observability SDK must never crash the host app.
+    # Use valid? to check for configuration errors programmatically.
     def validate!
-      raise ArgumentError, "Tracelit.config.api_key is required" if api_key.nil? || api_key.empty?
-      raise ArgumentError, "Tracelit.config.service_name is required" if service_name.nil? || service_name.empty?
-      raise ArgumentError, "sample_rate must be between 0.0 and 1.0" unless sample_rate.between?(0.0, 1.0)
+      # no-op — see valid? for soft validation
     end
 
     # Infer service name from Rails application if not explicitly set.

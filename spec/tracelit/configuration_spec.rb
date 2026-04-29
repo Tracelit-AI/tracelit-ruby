@@ -80,7 +80,7 @@ RSpec.describe Tracelit::Configuration do
     end
   end
 
-  describe "#validate!" do
+  describe "#valid?" do
     subject(:config) do
       described_class.new.tap do |c|
         c.api_key      = "tl_live_abc123"
@@ -88,54 +88,59 @@ RSpec.describe Tracelit::Configuration do
       end
     end
 
-    it "does not raise when all required fields are valid" do
+    it "returns an empty array when all required fields are valid" do
+      expect(config.valid?).to be_empty
+    end
+
+    it "returns an error when api_key is nil" do
+      config.api_key = nil
+      expect(config.valid?).to include(match(/api_key is required/))
+    end
+
+    it "returns an error when api_key is empty" do
+      config.api_key = ""
+      expect(config.valid?).to include(match(/api_key is required/))
+    end
+
+    it "returns an error when resolved_service_name falls back to 'unknown-service'" do
+      config.service_name = nil
+      expect(config.valid?).to include(match(/service_name is required/))
+    end
+
+    it "returns an error when sample_rate is below 0.0" do
+      config.sample_rate = -0.01
+      expect(config.valid?).to include(match(/sample_rate must be between/))
+    end
+
+    it "returns an error when sample_rate is above 1.0" do
+      config.sample_rate = 1.01
+      expect(config.valid?).to include(match(/sample_rate must be between/))
+    end
+
+    it "accepts sample_rate of exactly 0.0" do
+      config.sample_rate = 0.0
+      expect(config.valid?).to be_empty
+    end
+
+    it "accepts sample_rate of exactly 1.0" do
+      config.sample_rate = 1.0
+      expect(config.valid?).to be_empty
+    end
+
+    it "never raises — always returns an array" do
+      config.api_key = nil
+      config.service_name = nil
+      expect { config.valid? }.not_to raise_error
+    end
+  end
+
+  describe "#validate!" do
+    it "is a no-op and never raises" do
+      config = described_class.new
+      config.api_key      = nil
+      config.service_name = nil
+      config.sample_rate  = 99.0
       expect { config.validate! }.not_to raise_error
-    end
-
-    context "when api_key is missing" do
-      it "raises for nil" do
-        config.api_key = nil
-        expect { config.validate! }.to raise_error(ArgumentError, /api_key is required/)
-      end
-
-      it "raises for empty string" do
-        config.api_key = ""
-        expect { config.validate! }.to raise_error(ArgumentError, /api_key is required/)
-      end
-    end
-
-    context "when service_name is missing" do
-      it "raises for nil" do
-        config.service_name = nil
-        expect { config.validate! }.to raise_error(ArgumentError, /service_name is required/)
-      end
-
-      it "raises for empty string" do
-        config.service_name = ""
-        expect { config.validate! }.to raise_error(ArgumentError, /service_name is required/)
-      end
-    end
-
-    context "when sample_rate is out of range" do
-      it "raises for values below 0.0" do
-        config.sample_rate = -0.01
-        expect { config.validate! }.to raise_error(ArgumentError, /sample_rate must be between/)
-      end
-
-      it "raises for values above 1.0" do
-        config.sample_rate = 1.01
-        expect { config.validate! }.to raise_error(ArgumentError, /sample_rate must be between/)
-      end
-
-      it "accepts the boundary value 0.0" do
-        config.sample_rate = 0.0
-        expect { config.validate! }.not_to raise_error
-      end
-
-      it "accepts the boundary value 1.0" do
-        config.sample_rate = 1.0
-        expect { config.validate! }.not_to raise_error
-      end
     end
   end
 

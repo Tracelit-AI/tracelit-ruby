@@ -94,6 +94,40 @@ RSpec.describe Tracelit::RailsLoggerBridge::OTelLogger do
       allow(otel_logger).to receive(:on_emit).and_raise(RuntimeError, "otel error")
       expect { logger.add(1, "msg") }.not_to raise_error
     end
+
+    describe "re-entrancy guard (fix 10)" do
+      it "does not emit a second record when called recursively on the same thread" do
+        allow(otel_logger).to receive(:on_emit) do
+          # Simulate OTel internals calling back into Rails.logger during emit
+          logger.add(1, "recursive call")
+        end
+
+        logger.add(1, "original")
+
+        # on_emit should only have been called once — the recursive call is suppressed
+        expect(otel_logger).to have_received(:on_emit).once
+      end
+
+      it "clears the re-entrancy flag after the call completes" do
+        logger.add(1, "first")
+        logger.add(1, "second")
+
+        expect(otel_logger).to have_received(:on_emit).twice
+      end
+
+      it "clears the re-entrancy flag even when on_emit raises" do
+        call_count = 0
+        allow(otel_logger).to receive(:on_emit) do
+          call_count += 1
+          raise RuntimeError, "otel exploded" if call_count == 1
+        end
+
+        logger.add(1, "first — raises inside on_emit")
+        logger.add(1, "second — flag must be clear so this goes through")
+
+        expect(call_count).to eq(2)
+      end
+    end
   end
 
   describe "#log" do
