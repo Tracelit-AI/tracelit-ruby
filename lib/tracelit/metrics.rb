@@ -29,8 +29,11 @@ module Tracelit
         export_timeout_millis:  10_000
       )
 
+      tp = OpenTelemetry.tracer_provider
+      resource = tp.respond_to?(:resource) ? tp.resource : OpenTelemetry::SDK::Resources::Resource.create({})
+
       provider = OpenTelemetry::SDK::Metrics::MeterProvider.new(
-        resource: OpenTelemetry.tracer_provider.resource
+        resource: resource
       )
       provider.add_metric_reader(reader)
 

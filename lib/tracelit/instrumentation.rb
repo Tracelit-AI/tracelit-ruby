@@ -40,9 +40,10 @@ module Tracelit
 
         OpenTelemetry::SDK.configure do |otel|
           # Resource attributes identify this service in Tracelit.
-          # These populate the `resource` Map column on every telemetry row.
+          # Keys are coerced to strings; non-primitive values are dropped to
+          # prevent ConfigurationError from Resource.create validation.
           base_attrs = {
-            OpenTelemetry::SemanticConventions::Resource::SERVICE_NAME    => config.resolved_service_name,
+            OpenTelemetry::SemanticConventions::Resource::SERVICE_NAME         => config.resolved_service_name,
             OpenTelemetry::SemanticConventions::Resource::DEPLOYMENT_ENVIRONMENT => config.environment,
             "telemetry.sdk.language" => "ruby",
             "telemetry.sdk.name"     => detect_framework,
@@ -52,7 +53,7 @@ module Tracelit
           base_attrs["service.commit_sha"] = sha if sha
 
           otel.resource = OpenTelemetry::SDK::Resources::Resource.create(
-            base_attrs.merge(config.resource_attributes)
+            base_attrs.merge(config.sanitized_resource_attributes)
           )
 
           # Build the OTLP exporter once — shared by both processors
@@ -80,6 +81,21 @@ module Tracelit
           # Action View, Net::HTTP, Faraday, Redis, Sidekiq, and more.
           # use_all() enables every installed instrumentation gem.
           otel.use_all
+        end
+
+        # Guard: if the SDK configure block failed internally (e.g. a bad
+        # resource attribute or instrumentation error caught by the error
+        # handler), the global tracer provider is still the ProxyTracerProvider
+        # and does not respond to .resource. Detect this and bail out cleanly
+        # instead of letting setup_logs / Metrics.setup fail with cryptic errors.
+        unless OpenTelemetry.tracer_provider.respond_to?(:resource)
+          OpenTelemetry.logger.warn(
+            "[Tracelit] OTel SDK did not initialize correctly — " \
+            "tracer provider is still a proxy. " \
+            "Check the configuration errors logged above. " \
+            "Logs and metrics pipelines will not start."
+          )
+          return
         end
 
         # Set sampler after configure — Configurator does not expose
@@ -153,8 +169,11 @@ module Tracelit
         }
       )
 
+      tp = OpenTelemetry.tracer_provider
+      resource = tp.respond_to?(:resource) ? tp.resource : OpenTelemetry::SDK::Resources::Resource.create({})
+
       logger_provider = OpenTelemetry::SDK::Logs::LoggerProvider.new(
-        resource: OpenTelemetry.tracer_provider.resource
+        resource: resource
       )
 
       logger_provider.add_log_record_processor(

@@ -99,5 +99,19 @@ module Tracelit
       return ::Rails.application.class.module_parent_name.underscore if defined?(::Rails)
       "unknown-service"
     end
+
+    # Returns resource_attributes with all keys coerced to strings and any
+    # values that are not OTel-primitive (String, Integer, Float, true/false)
+    # removed. This prevents ConfigurationError when users pass symbols, nils,
+    # or other non-primitive values as resource attribute values.
+    PRIMITIVE_TYPES = [String, Integer, Float, TrueClass, FalseClass].freeze
+    private_constant :PRIMITIVE_TYPES
+
+    def sanitized_resource_attributes
+      resource_attributes.each_with_object({}) do |(k, v), h|
+        next unless PRIMITIVE_TYPES.any? { |t| v.is_a?(t) }
+        h[k.to_s] = v
+      end
+    end
   end
 end

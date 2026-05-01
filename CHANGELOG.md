@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.4] — 2026-05-01
+
+### Fixed
+
+- **ProxyTracerProvider cascade** — when `OpenTelemetry::SDK.configure` fails internally (e.g. a bad resource attribute or an instrumentation gem error caught by the error handler), the global tracer provider remains the pre-boot `ProxyTracerProvider` which does not respond to `.resource`. `setup_logs` and `Metrics.setup` now guard this call with `respond_to?(:resource)` and fall back to an empty resource, preventing the `undefined method 'resource' for ProxyTracerProvider` error.
+- **Post-configure provider check** — `Instrumentation.setup` now checks immediately after `OpenTelemetry::SDK.configure` whether the tracer provider is a real SDK provider. If the SDK did not fully initialize, a clear single-line warning is logged and the logs/metrics pipelines are skipped cleanly rather than failing with cryptic `NoMethodError`s.
+- **`resource_attributes` type safety** — `Configuration#sanitized_resource_attributes` filters out any value that is not a `String`, `Integer`, `Float`, `true`, or `false` and coerces all keys to strings. This prevents `OpenTelemetry::SDK::ConfigurationError` when users accidentally pass symbol values or `nil` as resource attribute values.
+- **`resolved_commit_sha` missing** — `config.resolved_commit_sha` was referenced in `Instrumentation` but not defined on `Configuration`, causing a `NoMethodError` inside the SDK configure block (caught by the error handler, but enough to leave the SDK in a bad state). The method is now defined and reads from `TRACELIT_COMMIT_SHA`, `HEROKU_SLUG_COMMIT`, `SOURCE_VERSION`, `RENDER_GIT_COMMIT`, or `GITHUB_SHA` in that order.
+
+---
+
 ## [0.1.3] — 2026-05-01
 
 ### Fixed
