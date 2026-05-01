@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.7] — 2026-05-01
+
+### Fixed
+
+- **Resource attribute `ConfigurationError` no longer blocks SDK init** — `Resource.create` also merges the `OTEL_RESOURCE_ATTRIBUTES` environment variable and `Resource.default` (process info, OS details) in addition to attributes we set. Any of those sources can carry a non-primitive value and raise `ConfigurationError` or `ArgumentError`. That call is now wrapped in a rescue so the SDK configure block always completes, the real `TracerProvider` is installed, and traces/logs/metrics all start. A targeted warning tells the operator exactly what to fix (`OTEL_RESOURCE_ATTRIBUTES` or `config.resource_attributes`) without any pipeline downtime.
+
+---
+
 ## [0.1.5] — 2026-05-01
 
 ### Fixed

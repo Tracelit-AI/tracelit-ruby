@@ -52,9 +52,24 @@ module Tracelit
           sha = config.resolved_commit_sha
           base_attrs["service.commit_sha"] = sha if sha
 
-          otel.resource = OpenTelemetry::SDK::Resources::Resource.create(
-            base_attrs.merge(config.sanitized_resource_attributes)
-          )
+          # Resource.create also reads OTEL_RESOURCE_ATTRIBUTES from the
+          # environment and merges in Resource.default (process, OS info, etc.)
+          # Any of those sources can carry non-primitive values and raise
+          # ConfigurationError / ArgumentError. If that happens we fall back to
+          # an empty resource so the SDK configure block can still complete and
+          # install the real TracerProvider — traces will work, only the custom
+          # labels are missing. A clear warning tells the operator what to fix.
+          begin
+            otel.resource = OpenTelemetry::SDK::Resources::Resource.create(
+              base_attrs.merge(config.sanitized_resource_attributes)
+            )
+          rescue ArgumentError, OpenTelemetry::SDK::ConfigurationError => e
+            OpenTelemetry.logger.warn(
+              "[Tracelit] could not set resource attributes: #{e.message}. " \
+              "Check OTEL_RESOURCE_ATTRIBUTES and config.resource_attributes for " \
+              "non-string/integer/float/boolean values. Continuing with default resource."
+            )
+          end
 
           # Build the OTLP exporter once — shared by both processors
           exporter = OpenTelemetry::Exporter::OTLP::Exporter.new(
