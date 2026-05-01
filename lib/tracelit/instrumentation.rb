@@ -41,14 +41,18 @@ module Tracelit
         OpenTelemetry::SDK.configure do |otel|
           # Resource attributes identify this service in Tracelit.
           # These populate the `resource` Map column on every telemetry row.
+          base_attrs = {
+            OpenTelemetry::SemanticConventions::Resource::SERVICE_NAME    => config.resolved_service_name,
+            OpenTelemetry::SemanticConventions::Resource::DEPLOYMENT_ENVIRONMENT => config.environment,
+            "telemetry.sdk.language" => "ruby",
+            "telemetry.sdk.name"     => detect_framework,
+            "telemetry.sdk.version"  => Tracelit::VERSION,
+          }
+          sha = config.resolved_commit_sha
+          base_attrs["service.commit_sha"] = sha if sha
+
           otel.resource = OpenTelemetry::SDK::Resources::Resource.create(
-            {
-              OpenTelemetry::SemanticConventions::Resource::SERVICE_NAME    => config.resolved_service_name,
-              OpenTelemetry::SemanticConventions::Resource::DEPLOYMENT_ENVIRONMENT => config.environment,
-              "telemetry.sdk.language" => "ruby",
-              "telemetry.sdk.name"     => detect_framework,
-              "telemetry.sdk.version"  => Tracelit::VERSION,
-            }.merge(config.resource_attributes)
+            base_attrs.merge(config.resource_attributes)
           )
 
           # Build the OTLP exporter once — shared by both processors

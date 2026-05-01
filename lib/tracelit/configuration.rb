@@ -38,6 +38,34 @@ module Tracelit
       @resource_attributes = {}
     end
 
+    # Resolves the current commit SHA with zero developer friction.
+    # Checks common CI/CD environment variables first, then falls back
+    # to running `git rev-parse HEAD` in the project directory.
+    def resolved_commit_sha
+      return @resolved_commit_sha if defined?(@resolved_commit_sha)
+
+      sha = ENV["COMMIT_SHA"] ||
+            ENV["GIT_COMMIT_SHA"] ||
+            ENV["GIT_COMMIT"] ||
+            ENV["GITHUB_SHA"] ||
+            ENV["HEROKU_SLUG_COMMIT"] ||
+            ENV["SOURCE_VERSION"] ||        # Heroku alt
+            ENV["RENDER_GIT_COMMIT"] ||     # Render
+            ENV["FLY_APP_VERSION"] ||       # Fly.io
+            ENV["RAILWAY_GIT_COMMIT_SHA"]   # Railway
+
+      if sha.nil? || sha.empty?
+        begin
+          sha = `git rev-parse HEAD 2>/dev/null`.strip
+          sha = nil if sha.empty?
+        rescue StandardError
+          sha = nil
+        end
+      end
+
+      @resolved_commit_sha = sha
+    end
+
     # Returns an array of human-readable error strings.
     # Empty array means the configuration is valid.
     # Never raises — callers decide whether to warn or abort.
