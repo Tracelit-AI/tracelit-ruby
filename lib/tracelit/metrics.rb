@@ -48,6 +48,7 @@ module Tracelit
       install_sidekiq_middleware      if defined?(::Sidekiq)
       install_connection_pool_poller  if defined?(::ActiveRecord)
       install_memory_poller
+      install_cpu_poller
     rescue StandardError => e
       OpenTelemetry.logger.warn("[Tracelit] failed to set up metrics: #{e.message}")
     end
@@ -62,8 +63,10 @@ module Tracelit
     def self.restart_pollers(config)
       @connection_pool_poller_installed = false
       @memory_poller_installed          = false
+      @cpu_poller_installed             = false
       install_connection_pool_poller if defined?(::ActiveRecord)
       install_memory_poller
+      install_cpu_poller
     rescue StandardError => e
       OpenTelemetry.logger.warn("[Tracelit] failed to restart pollers after fork: #{e.message}")
     end
@@ -348,6 +351,101 @@ module Tracelit
       thread
     rescue StandardError => e
       OpenTelemetry.logger.warn("[Tracelit] failed to install memory poller: #{e.message}")
+    end
+
+    # Polls process CPU utilisation every 30 seconds on a daemon thread.
+    # Computes a percentage by tracking the delta in CPU time (user + system)
+    # against wall-clock elapsed time — same approach as the Go and Node SDKs.
+    #
+    # On Linux:  reads /proc/self/stat (utime + stime in jiffies at 100 Hz).
+    # On macOS:  reads `ps -o %cpu= -p <pid>` as a direct percentage.
+    #
+    # Emits: process.runtime.cpu.usage (%)
+    # Attributes: process.pid, process.runtime
+    def self.install_cpu_poller
+      return if @cpu_poller_installed
+      @cpu_poller_installed = true
+
+      cpu_gauge = @meter.create_gauge(
+        "process.runtime.cpu.usage",
+        description: "Process CPU utilisation percentage",
+        unit: "%"
+      )
+
+      pid      = Process.pid
+      linux    = File.exist?("/proc/self/stat")
+      interval = 30 # seconds
+
+      thread = Thread.new do
+        Thread.current[:tracelit_cpu_poller] = true
+
+        last_cpu_time  = read_cpu_time_s(pid, linux)
+        last_wall_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        loop do
+          sleep interval
+          begin
+            now      = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            elapsed  = now - last_wall_time
+            cpu_time = read_cpu_time_s(pid, linux)
+
+            next if elapsed <= 0 || cpu_time.nil? || last_cpu_time.nil?
+
+            delta = cpu_time - last_cpu_time
+            last_cpu_time  = cpu_time
+            last_wall_time = now
+
+            next if delta < 0
+
+            pct = [[delta / elapsed * 100.0, 100.0].min, 0.0].max
+
+            cpu_gauge.record(pct, attributes: {
+              "process.pid"     => pid.to_s,
+              "process.runtime" => "ruby",
+            })
+          rescue StandardError
+            # Retry next cycle — never crash on a metric poll failure
+          end
+        end
+      end
+      thread.abort_on_exception = false
+      thread
+    rescue StandardError => e
+      OpenTelemetry.logger.warn("[Tracelit] failed to install CPU poller: #{e.message}")
+    end
+
+    # Returns cumulative CPU time (user + system) for this process in seconds.
+    # On Linux reads /proc/self/stat; on macOS/BSD falls back to ps %cpu
+    # which gives an instantaneous percentage instead (treated as fractional
+    # seconds over a 1-second window — good enough for a 30 s gauge).
+    def self.read_cpu_time_s(pid, linux)
+      if linux
+        stat = begin
+          File.read("/proc/self/stat")
+        rescue
+          return nil
+        end
+        # Format: pid (comm) state ppid ... utime stime ...
+        # comm can contain spaces — find last ')' and split from there.
+        after_comm = stat[stat.rindex(")").to_i + 1..]
+        return nil unless after_comm
+
+        fields = after_comm.split
+        # After ')': state(0) ppid(1) ... utime(11) stime(12)
+        utime = fields[11]&.to_i
+        stime = fields[12]&.to_i
+        return nil unless utime && stime
+
+        # Jiffies at 100 Hz → seconds
+        (utime + stime) / 100.0
+      else
+        # macOS/BSD: `ps` gives current CPU % directly.
+        # Return it as a fractional "seconds per second" proxy so the
+        # delta calculation above yields the right percentage.
+        out = `ps -o %cpu= -p #{Integer(pid)} 2>/dev/null`.strip
+        return nil if out.empty?
+        out.to_f / 100.0
+      end
     end
   end
 end

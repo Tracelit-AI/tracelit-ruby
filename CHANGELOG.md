@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.8] — 2026-05-05
+
+### Added
+
+- **CPU usage metric** — a new background poller emits `process.runtime.cpu.usage` (%) every 30 seconds. On Linux it reads `/proc/self/stat` (utime + stime in jiffies) for accuracy; on macOS/BSD it falls back to `ps -o %cpu=`. The gauge carries `process.pid` and `process.runtime` attributes and is guarded by `@cpu_poller_installed` so it is idempotent across `reset!` + re-setup cycles.
+
+### Changed
+
+- **README cleanup** — removed the "Set up with AI" section and the inline `rspec` instructions; the Changelog section now links to the hosted release history at [docs.tracelit.io/changelog](https://docs.tracelit.io/changelog).
+
+---
+
 ## [0.1.7] — 2026-05-01
 
 ### Fixed

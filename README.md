@@ -6,12 +6,6 @@ Official Ruby SDK for [Tracelit](https://tracelit.io) — drop-in OpenTelemetry 
 
 ---
 
-## Set up with AI
-
-Want an AI assistant (Cursor, Claude, ChatGPT, etc.) to integrate Tracelit into your app automatically? Copy the contents of [`llm_prompt.txt`](./llm_prompt.txt) and paste it as your prompt. It covers gem installation, initializer setup, manual spans, custom metrics, and test guard — everything the AI needs in one shot.
-
----
-
 ## Installation
 
 Add to your `Gemfile` and run `bundle install`:
@@ -273,9 +267,6 @@ TRACELIT_ENABLED=false
 
 ---
 
-## Running the SDK's own tests
+## Changelog
 
-```bash
-bundle install
-bundle exec rspec
-```
+See the [release history](https://docs.tracelit.io/changelog) on the Tracelit docs.
