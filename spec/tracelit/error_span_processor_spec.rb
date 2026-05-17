@@ -48,8 +48,13 @@ RSpec.describe Tracelit::ErrorSpanProcessor do
         allow(trace_flags).to receive(:sampled?).and_return(false)
       end
 
-      it "force-exports the span data to the exporter" do
+      it "force-exports the span data to the exporter (async background thread)" do
         processor.on_finish(span)
+        # Export is asynchronous — wait for the queue to drain then verify.
+        deadline = Time.now + 2
+        sleep 0.01 until processor.__send__(:instance_variable_get, :@queue).empty? ||
+                         Time.now > deadline
+        sleep 0.05 # small buffer so the worker thread finishes the in-progress export
         expect(exporter).to have_received(:export).with([span_data])
       end
     end
